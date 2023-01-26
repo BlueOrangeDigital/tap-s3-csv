@@ -413,14 +413,7 @@ def sample_files(config, table_spec, s3_files,
                     s3_path,
                     max_records,
                     sample_rate)
-        try:
-            yield from itertools.islice(sample_file(table_spec, s3_bucket, s3_path, file_handle, sample_rate, extension, config), max_records)
-        except (UnicodeDecodeError,json.decoder.JSONDecodeError):
-            # UnicodeDecodeError will be raised if non csv file parsed to csv parser
-            # JSONDecodeError will be reaised if non JSONL file parsed to JSON parser
-            # Handled both error and skipping file with wrong extension.
-            LOGGER.warn("Skipping %s file as parsing failed. Verify an extension of the file.",s3_path)
-            skipped_files_count = skipped_files_count + 1
+        yield from itertools.islice(sample_file(table_spec, s3_bucket, s3_path, file_handle, sample_rate, extension, config), max_records)
 
 #pylint: disable=global-statement
 def get_input_files_for_table(config, table_spec, modified_since=None, modified_until=None):

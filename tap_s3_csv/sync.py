@@ -66,20 +66,13 @@ def sync_table_file(config, s3_path, table_spec, stream):
         LOGGER.warning('"%s" without extension will not be synced.',s3_path)
         s3.skipped_files_count = s3.skipped_files_count + 1
         return 0
-    try:
-        if extension == "zip":
-            return sync_compressed_file(config, s3_path, table_spec, stream)
-        if extension in ["csv", "gz", "jsonl", "txt", "parquet"]:
-            return handle_file(config, s3_path, table_spec, stream, extension)
-        LOGGER.warning('"%s" having the ".%s" extension will not be synced.',s3_path,extension)
-        raise Exception(f"Extension {extension} not supported.")
-    except (UnicodeDecodeError,json.decoder.JSONDecodeError):
-        # UnicodeDecodeError will be raised if non csv file passed to csv parser
-        # JSONDecodeError will be raised if non JSONL file passed to JSON parser
-        # Handled both error and skipping file with wrong extension.
-        LOGGER.warning("Skipping %s file as parsing failed. Verify an extension of the file.",s3_path)
-        s3.skipped_files_count = s3.skipped_files_count + 1
-    return 0
+
+    if extension == "zip":
+        return sync_compressed_file(config, s3_path, table_spec, stream)
+    if extension in ["csv", "gz", "jsonl", "txt", "parquet"]:
+        return handle_file(config, s3_path, table_spec, stream, extension)
+    LOGGER.warning('"%s" having the ".%s" extension will not be synced.',s3_path,extension)
+    raise Exception(f"Extension {extension} not supported.")
 
 
 # pylint: disable=too-many-arguments
@@ -252,7 +245,13 @@ def sync_jsonl_file(config, iterator, s3_path, table_spec, stream):
 
         decoded_row = row.decode('utf-8')
         if decoded_row.strip():
-            row = json.loads(decoded_row)
+            try:
+                clean_decoded_row = decoded_row.replace("\  ", " ")
+                row = json.loads(clean_decoded_row)
+            except Exception as ex:
+                LOGGER.info("Error parssing the following object: ")
+                LOGGER.info(clean_decoded_row)
+                raise ex
             # Skipping the empty json row.
             if len(row) == 0:
                 continue
