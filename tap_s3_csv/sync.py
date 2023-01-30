@@ -1,6 +1,7 @@
 import sys
 import csv
 import io
+import re
 import json
 import gzip
 import os
@@ -22,6 +23,17 @@ from tap_s3_csv import (
     utils,
     s3
 )
+
+
+class LazyDecoder(json.JSONDecoder):
+    def decode(self, s, **kwargs):
+        regex_replacements = [
+            (re.compile(r'([^\\\"])\\([^\\\"])'), r'\1\\\\\2'),
+            (re.compile(r',(\s*])'), r'\1'),
+        ]
+        for regex, replacement in regex_replacements:
+            s = regex.sub(replacement, s)
+        return super().decode(s, **kwargs)
 
 LOGGER = singer.get_logger()
 
@@ -246,11 +258,11 @@ def sync_jsonl_file(config, iterator, s3_path, table_spec, stream):
         decoded_row = row.decode('utf-8')
         if decoded_row.strip():
             try:
-                clean_decoded_row = decoded_row.replace("\  ", " ")
-                row = json.loads(clean_decoded_row)
+                row = json.loads(decoded_row, cls=LazyDecoder)
             except Exception as ex:
                 LOGGER.info("Error parssing the following object: ")
-                LOGGER.info(clean_decoded_row)
+                LOGGER.info(("Record", decoded_row.replace('\\"', "'")))
+                LOGGER.info(("Raw Record", row))
                 raise ex
             # Skipping the empty json row.
             if len(row) == 0:
@@ -294,7 +306,7 @@ def sync_jsonl_file(config, iterator, s3_path, table_spec, stream):
 
 def sync_parquet_file(config, iterator, s3_path, table_spec, stream):
     LOGGER.info('Syncing file "%s".', s3_path)
-    
+
     bucket = config['bucket']
     table_name = table_spec['table_name']
 
