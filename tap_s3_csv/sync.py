@@ -28,8 +28,10 @@ from tap_s3_csv import (
 class LazyDecoder(json.JSONDecoder):
     def decode(self, s, **kwargs):
         regex_replacements = [
-            (re.compile(r'([^\\\"])\\([^\\\"])'), r'\1\\\\\2'),
-            (re.compile(r',(\s*])'), r'\1'),
+            (re.compile(r'([^\\])\\+([^\\])'), r'\1\\\2'),
+            (re.compile(r'\\+\s+'), r' '),
+            (re.compile(r'\\+([_]+)'), r'\1'),
+            (re.compile(r'([^\\\"])\\+([^\\\"])'), r'\1\\\\\2'),
         ]
         for regex, replacement in regex_replacements:
             s = regex.sub(replacement, s)
@@ -255,15 +257,17 @@ def sync_jsonl_file(config, iterator, s3_path, table_spec, stream):
 
     for row in iterator:
 
-        decoded_row = row.decode('utf-8')
+        decoded_row = row.decode()
         if decoded_row.strip():
             try:
-                row = json.loads(decoded_row, cls=LazyDecoder)
-            except Exception as ex:
-                LOGGER.info("Error parssing the following object: ")
-                LOGGER.info(("Record", decoded_row.replace('\\"', "'")))
-                LOGGER.info(("Raw Record", row))
-                raise ex
+                row = json.loads(decoded_row)
+            except json.decoder.JSONDecodeError as ex:
+                try:
+                    row = json.loads(decoded_row, cls=LazyDecoder)
+                except json.decoder.JSONDecodeError as ex:
+                    LOGGER.info("Error parssing the following object: ")
+                    LOGGER.info(("Raw row", row))
+                    raise ex
             # Skipping the empty json row.
             if len(row) == 0:
                 continue
